@@ -10,7 +10,7 @@
 delay:
     jmp x-- delay       ; spin (Y + 1) cycles
     in pins, 32         ; capture GPIO window starting at IN_BASE (GP3)
-    push                ; one data word per strobe (block if RX full)
+    ; push                ; one data word per strobe (block if RX full)
     set pins, 1 [7]     ; strobe GP2 high for 8 cycles so B cannot miss it
     set pins, 0
 .wrap

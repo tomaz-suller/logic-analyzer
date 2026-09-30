@@ -15,13 +15,17 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
+
 set(sdkVersion 2.3.1)
 set(toolchainVersion 15_2_Rel1)
 set(picotoolVersion 2.3.1)
-set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
-if (EXISTS ${picoVscode})
-    include(${picoVscode})
+
+if(NOT DEFINED PICO_VS_CODE)
+    set(PICO_VS_CODE "${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake")
 endif()
+
+include(${PICO_VS_CODE})
+
 # ====================================================================================
 set(PICO_BOARD pico_w CACHE STRING "Board type")
 
@@ -35,7 +39,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(logic-analyzer logic-analyzer.cpp )
+add_executable(logic-analyzer logic-analyzer.cpp)
 
 pico_set_program_name(logic-analyzer "logic-analyzer")
 pico_set_program_version(logic-analyzer "0.1")
@@ -51,20 +55,23 @@ pico_enable_stdio_uart(logic-analyzer 1)
 pico_enable_stdio_usb(logic-analyzer 0)
 
 # Add the standard library to the build
-target_link_libraries(logic-analyzer
-        pico_stdlib)
+target_link_libraries(
+    logic-analyzer
+    pico_stdlib
+)
 
 # Add the standard include files to the build
-target_include_directories(logic-analyzer PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}
+target_include_directories(
+    logic-analyzer PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
 )
 
 # Add any user requested libraries
-target_link_libraries(logic-analyzer
-        hardware_dma
-        hardware_pio
-        hardware_clocks
-        )
+target_link_libraries(
+    logic-analyzer
+    hardware_dma
+    hardware_pio
+    hardware_clocks
+)
 
 pico_add_extra_outputs(logic-analyzer)
-

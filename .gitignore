@@ -2,5 +2,6 @@
 /.specstory/
 
 build
+install
 !.vscode/*
-
+.vs
