@@ -1,0 +1,79 @@
+;
+; PIO ping-pong capture prototype.
+; SM A (detect): slow periodic sample + GP2 strobe.
+; SM B (counter): free-running X countdown; snapshot X on rising GP2.
+;
+
+.program detect
+.wrap_target
+    mov x, y            ; nested delay: reload inner counter from Y
+delay:
+    jmp x-- delay       ; spin (Y + 1) cycles
+    in pins, 32         ; capture GPIO window starting at IN_BASE (GP3)
+    push                ; one data word per strobe (block if RX full)
+    set pins, 1 [7]     ; strobe GP2 high for 8 cycles so B cannot miss it
+    set pins, 0
+.wrap
+
+% c-sdk {
+// Load Y with a 32-bit delay, then join RX (PULL needs TX, FJOIN_RX disables it).
+static inline void detect_program_init(PIO pio, uint sm, uint offset, uint strobe_pin,
+                                       uint capture_pin, uint32_t delay_cycles) {
+    pio_sm_config c = detect_program_get_default_config(offset);
+    sm_config_set_set_pins(&c, strobe_pin, 1);
+    sm_config_set_in_pins(&c, capture_pin);
+    sm_config_set_in_shift(&c, false, false, 32);
+    sm_config_set_clkdiv(&c, 1.0f);
+    pio_sm_init(pio, sm, offset, &c);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, strobe_pin, 1, true);
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << strobe_pin);
+
+    pio_sm_put_blocking(pio, sm, delay_cycles);
+    pio_sm_exec(pio, sm, pio_encode_pull(false, true));
+    pio_sm_exec(pio, sm, pio_encode_out(pio_y, 32));
+
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+    pio_sm_set_config(pio, sm, &c);
+}
+%}
+
+.program counter
+    mov x, !null        ; X = 0xffffffff, counts down every loop
+.wrap_target
+loop:
+    jmp pin pin_high    ; 1: sample GP2 (jmp_pin)
+    set y, 0            ; 1: pin low — remember previous = low
+    nop                 ; 1
+    nop                 ; 1
+    nop                 ; 1
+    jmp x-- loop        ; 1: always decrement; total 6 cycles
+    jmp loop            ; X wrapped
+
+pin_high:
+    jmp !y rising       ; 1: Y==0 means rising edge
+    nop                 ; 1: still high — pad to match rising
+    nop                 ; 1
+    nop                 ; 1
+    jmp x-- loop        ; 1: total 6 cycles
+    jmp loop
+
+rising:
+    set y, 1            ; 1: remember previous = high
+    mov isr, x          ; 1: timestamp
+    push noblock        ; 1: never wait (1:1 with detect strobe)
+    jmp x-- loop        ; 1: total 6 cycles
+    jmp loop
+
+% c-sdk {
+static inline void counter_program_init(PIO pio, uint sm, uint offset, uint strobe_pin) {
+    pio_sm_config c = counter_program_get_default_config(offset);
+    sm_config_set_jmp_pin(&c, strobe_pin);
+    sm_config_set_in_shift(&c, false, false, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+    sm_config_set_clkdiv(&c, 1.0f);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_exec(pio, sm, pio_encode_set(pio_y, 0));
+    pio_set_input_sync_bypass_with_mask(pio, 1u << strobe_pin, 1u << strobe_pin);
+}
+%}

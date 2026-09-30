@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+
+Whenever the user make a question regarding the Raspberry Pi Pico W, or its RP2040 microcontroller, make sure to look up information in the microcontroller datasheet. When you do, remember to cite the specific chapter, section and sub-section you use as reference.
+
+A Markdown version of the datasheet is available at ./docs/rp2040-datasheet.md; use that to search inside the text. If you're able to read PDFs, you can look for diagrams in the PDF version of the datasheet, available at ./docs/RP-008371-DS-1-rp2040-datasheet.pdf.
