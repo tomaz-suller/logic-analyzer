@@ -11,6 +11,8 @@
 
 #define UART_ID uart1
 #define BAUD_RATE 115200
+#define UART_MSG "PING\r\n"
+#define UART_INTERVAL_MS 5
 
 #define STROBE_PIN 2
 #define CAPTURE_PIN 3
@@ -32,6 +34,14 @@ static int dma_time_pong;
 
 static volatile bool data_ready[2];
 static volatile bool time_ready[2];
+
+static repeating_timer_t uart_timer;
+
+static bool uart_tx_timer_cb(__unused repeating_timer_t *rt)
+{
+  uart_write_blocking(UART_ID, (const uint8_t *)UART_MSG, sizeof(UART_MSG) - 1);
+  return true;
+}
 
 static void dma_handler(void)
 {
@@ -66,15 +76,53 @@ static void configure_rx_channel(
   dma_channel_configure(channel, &c, dest, fifo, BUF_WORDS, start);
 }
 
+
+// LED
+#ifdef CYW43_WL_GPIO_LED_PIN
+#include "pico/cyw43_arch.h"
+#endif
+
+#ifndef LED_DELAY_MS
+#define LED_DELAY_MS 250
+#endif
+
+// Perform initialisation
+int pico_led_init(void) {
+#if defined(PICO_DEFAULT_LED_PIN)
+    // A device like Pico that uses a GPIO for the LED will define PICO_DEFAULT_LED_PIN
+    // so we can use normal GPIO functionality to turn the led on and off
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    return PICO_OK;
+#elif defined(CYW43_WL_GPIO_LED_PIN)
+    // For Pico W devices we need to initialise the driver etc
+    return cyw43_arch_init();
+#endif
+}
+
+// Turn the led on or off
+void pico_set_led(bool led_on) {
+#if defined(PICO_DEFAULT_LED_PIN)
+    // Just set the GPIO on or off
+    gpio_put(PICO_DEFAULT_LED_PIN, led_on);
+#elif defined(CYW43_WL_GPIO_LED_PIN)
+    // Ask the wifi "driver" to set the GPIO on or off
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_on);
+#endif
+}
+
 int main()
 {
   stdio_init_all();
+  sleep_ms(2000);
+
+  pico_led_init();
 
   uart_init(UART_ID, BAUD_RATE);
-  gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-  gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-
-  uart_puts(UART_ID, "Start.\n");
+  uart_set_hw_flow(UART_ID, false, false);
+  uart_set_format(UART_ID, 8, 1, UART_PARITY_NONE);
+  gpio_set_function(UART_TX_PIN, UART_FUNCSEL_NUM(UART_ID, UART_TX_PIN));
+  gpio_set_function(UART_RX_PIN, UART_FUNCSEL_NUM(UART_ID, UART_RX_PIN));
 
   PIO pio = pio0;
 
@@ -86,18 +134,15 @@ int main()
   uint offset_detect = pio_add_program(pio, &detect_program);
   uint offset_counter = pio_add_program(pio, &counter_program);
 
-  uart_puts(UART_ID, "PIO program added.\n");
-
   // Hundreds of ms per word so a 16-word half takes seconds (UART keeps up).
-  uint32_t delay_cycles = clock_get_hz(clk_sys) / 4;
+  // uint32_t delay_cycles = clock_get_hz(clk_sys) / 4;
+  uint32_t delay_cycles = 2048;
   detect_program_init
   (
     pio, DETECT_SM, offset_detect, STROBE_PIN, CAPTURE_PIN,
     delay_cycles
   );
   counter_program_init(pio, COUNTER_SM, offset_counter, STROBE_PIN);
-
-  uart_puts(UART_ID, "PIO program init.\n");
 
   dma_data_ping = dma_claim_unused_channel(true);
   dma_data_pong = dma_claim_unused_channel(true);
@@ -132,7 +177,6 @@ int main()
   irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
   irq_set_enabled(DMA_IRQ_0, true);
 
-  uart_puts(UART_ID, "IRQ set.\n");
 
   printf("System clock %lu Hz\n", (unsigned long)clock_get_hz(clk_sys));
   printf
@@ -149,6 +193,18 @@ int main()
   printf("Waiting for first half\n");
 
   pio_enable_sm_mask_in_sync(pio, (1u << DETECT_SM) | (1u << COUNTER_SM));
+
+  while (true) {
+        pico_set_led(true);
+        sleep_ms(LED_DELAY_MS);
+        pico_set_led(false);
+        sleep_ms(LED_DELAY_MS);
+  }
+
+  // Negative delay: fire every UART_INTERVAL_MS from the start of the last
+  // callback so the gap stays regular while the capture loop dumps buffers.
+
+  add_repeating_timer_ms(-UART_INTERVAL_MS, uart_tx_timer_cb, NULL, &uart_timer);
 
   while(true)
   {

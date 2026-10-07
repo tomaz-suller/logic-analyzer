@@ -45,20 +45,24 @@ pico_set_program_name(logic-analyzer "logic-analyzer")
 pico_set_program_version(logic-analyzer "0.1")
 
 # no_flash means the target is to run from RAM
-pico_set_binary_type(logic-analyzer no_flash)
+# pico_set_binary_type(logic-analyzer no_flash)
 
 # Generate PIO header
 pico_generate_pio_header(logic-analyzer ${CMAKE_CURRENT_LIST_DIR}/capture.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(logic-analyzer 1)
-pico_enable_stdio_usb(logic-analyzer 0)
+pico_enable_stdio_uart(logic-analyzer 0)
+pico_enable_stdio_usb(logic-analyzer 1)
 
 # Add the standard library to the build
 target_link_libraries(
     logic-analyzer
     pico_stdlib
 )
+
+if (PICO_CYW43_SUPPORTED)
+    target_link_libraries(logic-analyzer pico_cyw43_arch_none)
+endif()
 
 # Add the standard include files to the build
 target_include_directories(
