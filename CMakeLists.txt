@@ -38,8 +38,8 @@ project(logic-analyzer C CXX ASM)
 pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
-
-add_executable(logic-analyzer logic-analyzer.cpp)
+FILE(GLOB_RECURSE SRC_FILES "*.cpp")
+add_executable(logic-analyzer ${SRC_FILES})
 
 pico_set_program_name(logic-analyzer "logic-analyzer")
 pico_set_program_version(logic-analyzer "0.1")
